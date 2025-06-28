@@ -1,6 +1,7 @@
 require('dotenv').config();
 const tmi = require('tmi.js');
 const axios = require('axios');
+const fs = require('fs');
 
 // Configuración del bot
 const config = {
@@ -28,63 +29,7 @@ const VALORANT_API_KEY = 'HDEV-98c32dd6-7401-498c-80ed-f6220a8a4e39';
 const processedMessages = new Map();
 const MESSAGE_CACHE_DURATION = 10000;
 
-// Obtener broadcaster_id
-async function getBroadcasterId(channelName) {
-  try {
-    const response = await axios.get(`https://api.twitch.tv/helix/users?login=${channelName}`, {
-      headers: {
-        'Client-ID': config.twitch.clientId,
-        'Authorization': `Bearer ${config.twitch.token}`,
-      },
-    });
-    const broadcasterId = response.data.data[0]?.id;
-    if (!broadcasterId) throw new Error('No se encontró el broadcaster_id');
-    return broadcasterId;
-  } catch (error) {
-    console.error('Error al obtener broadcaster_id:', error.message);
-    return null;
-  }
-}
-
-// Crear clip
-async function createClip(broadcasterId) {
-  try {
-    const response = await axios.post(
-      `https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`,
-      {},
-      {
-        headers: {
-          'Client-ID': config.twitch.clientId,
-          'Authorization': `Bearer ${config.twitch.token}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    return `https://clips.twitch.tv/${response.data.data[0].id}`;
-  } catch (error) {
-    console.error('Error al crear clip:', error.message);
-    return null;
-  }
-}
-
-// Obtener rango de Valorant
-async function getValorantRank(puuid) {
-  try {
-    const response = await axios.get(`https://api.henrikdev.xyz/valorant/v2/by-puuid/mmr/eu/${puuid}`, {
-      headers: { 'Authorization': VALORANT_API_KEY },
-    });
-    if (response.status !== 200 || !response.data.data) throw new Error('Error al obtener rango');
-    const data = response.data.data.current_data;
-    const rank = data.currenttierpatched || 'Desconocido';
-    const rr = data.ranking_in_tier || 0;
-    return { rank, rr };
-  } catch (error) {
-    console.error('Error al obtener rango:', error.message);
-    return null;
-  }
-}
-
-// Configurar cliente de Twitch
+// Configuración de TMI
 const client = new tmi.Client({
   options: { debug: true },
   connection: { secure: true, reconnect: true },
@@ -95,9 +40,11 @@ const client = new tmi.Client({
   channels: [config.twitch.channel],
 });
 
-// Eventos de conexión
+// Conexión
 client.on('connected', (address, port) => console.log(`Bot conectado a ${address}:${port}`));
 client.on('reconnect', () => console.log('Reconectando al chat...'));
+
+client.connect().catch(console.error);
 
 // Limpiar cache
 setInterval(() => {
@@ -106,9 +53,6 @@ setInterval(() => {
     if (now - timestamp > MESSAGE_CACHE_DURATION) processedMessages.delete(messageId);
   }
 }, MESSAGE_CACHE_DURATION);
-
-// Conectar
-client.connect().catch(error => console.error('Error al conectar:', error));
 
 // Manejar mensajes
 client.on('message', async (channel, tags, message, self) => {
@@ -181,9 +125,7 @@ client.on('message', async (channel, tags, message, self) => {
 
   // !pot
   if (message.toLowerCase() === '!pot') {
-    if (!isModerator && !isBroadcaster) {
-      return; // Ignorar silenciosamente
-    }
+    if (!isModerator && !isBroadcaster) return;
     const currentTime = Date.now();
     if ((currentTime - lastPotTime) / 1000 < POT_COOLDOWN_SECONDS) {
       client.say(channel, `Espera ${Math.ceil(POT_COOLDOWN_SECONDS - (currentTime - lastPotTime) / 1000)} segundos`);
@@ -198,4 +140,114 @@ client.on('message', async (channel, tags, message, self) => {
   }
 });
 
-console.log(`Iniciando bot para ${config.twitch.channel} con ${process.env.BOT_USERNAME}...`);
+// Obtener broadcaster_id
+async function getBroadcasterId(channelName) {
+  try {
+    const response = await axios.get(`https://api.twitch.tv/helix/users?login=${channelName}`, {
+      headers: {
+        'Client-ID': config.twitch.clientId,
+        'Authorization': `Bearer ${config.twitch.token}`,
+      },
+    });
+    const broadcasterId = response.data.data[0]?.id;
+    if (!broadcasterId) throw new Error('No se encontró el broadcaster_id');
+    return broadcasterId;
+  } catch (error) {
+    console.error('Error al obtener broadcaster_id:', error.message);
+    return null;
+  }
+}
+
+// Crear clip
+async function createClip(broadcasterId) {
+  try {
+    const response = await axios.post(
+      `https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`,
+      {},
+      {
+        headers: {
+          'Client-ID': config.twitch.clientId,
+          'Authorization': `Bearer ${config.twitch.token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return `https://clips.twitch.tv/${response.data.data[0].id}`;
+  } catch (error) {
+    console.error('Error al crear clip:', error.message);
+    return null;
+  }
+}
+
+// Obtener rango de Valorant
+async function getValorantRank(puuid) {
+  try {
+    const response = await axios.get(`https://api.henrikdev.xyz/valorant/v2/by-puuid/mmr/eu/${puuid}`, {
+      headers: { 'Authorization': VALORANT_API_KEY },
+    });
+    if (response.status !== 200 || !response.data.data) throw new Error('Error al obtener rango');
+    const data = response.data.data.current_data;
+    const rank = data.currenttierpatched || 'Desconocido';
+    const rr = data.ranking_in_tier || 0;
+    return { rank, rr };
+  } catch (error) {
+    console.error('Error al obtener rango:', error.message);
+    return null;
+  }
+}
+
+// MONITOREO DE YOUTUBE INTEGRADO
+const STORAGE_PATH = './storage/lastVideo.json';
+
+async function fetchLatestVideo() {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  const channelId = process.env.YOUTUBE_CHANNEL_ID;
+
+  const channelResp = await axios.get('https://www.googleapis.com/youtube/v3/channels', {
+    params: { part: 'contentDetails', id: channelId, key: apiKey },
+  });
+
+  const uploadsId = channelResp.data.items[0].contentDetails.relatedPlaylists.uploads;
+
+  const videosResp = await axios.get('https://www.googleapis.com/youtube/v3/playlistItems', {
+    params: { part: 'snippet', playlistId: uploadsId, maxResults: 1, key: apiKey },
+  });
+
+  const item = videosResp.data.items[0];
+  return {
+    id: item.snippet.resourceId.videoId,
+    title: item.snippet.title,
+    url: `https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}`,
+    publishedAt: item.snippet.publishedAt,
+  };
+}
+
+async function checkForNewVideo() {
+  try {
+    const latestVideo = await fetchLatestVideo();
+
+    let lastVideo = {};
+    if (fs.existsSync(STORAGE_PATH)) {
+      lastVideo = JSON.parse(fs.readFileSync(STORAGE_PATH));
+    }
+
+    if (lastVideo.id !== latestVideo.id) {
+      fs.writeFileSync(STORAGE_PATH, JSON.stringify(latestVideo, null, 2));
+      const msg = `!editcom !youtube Nuevo video: ${latestVideo.url}`;
+      console.log(`[✓] Nuevo video detectado: ${latestVideo.title}`);
+      client.say(`#${config.twitch.channel}`, msg);
+    } else {
+      console.log('[·] Sin nuevos videos.');
+    }
+  } catch (err) {
+    console.error('[✗] Error verificando YouTube:', err.message);
+  }
+}
+
+// Ejecutar cada 15 minutos
+setInterval(checkForNewVideo, 15 * 60 * 1000);
+
+// Ejecutar inmediatamente al iniciar
+checkForNewVideo();
+
+console.log(`Bot inicializado para el canal ${config.twitch.channel} con el usuario ${process.env.BOT_USERNAME}`);
