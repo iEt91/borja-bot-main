@@ -1,2 +1,0 @@
-mkdir storage
-echo "{}" > storage/lastVideo.json
