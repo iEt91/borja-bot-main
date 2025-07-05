@@ -16,7 +16,6 @@ const config = {
   },
 };
 
-// --- Twitch: Cooldowns y valores ---
 const COOLDOWN_SECONDS = 30;
 let lastClipTime = 0;
 const RANK_COOLDOWN_SECONDS = 15;
@@ -189,7 +188,8 @@ discordClient.on('messageCreate', async message => {
   const videoId = urlMatch[1];
   const title = await getYoutubeVideoTitle(videoId);
   if (title) {
-    client.say(`#${config.twitch.channel}`, `!editcom !video 🎬Nuevo Video: ${title}`);
+    const videoUrl = `https://youtu.be/${videoId}`;
+    client.say(`#${config.twitch.channel}`, `!editcom !video 🎬Nuevo Video: ${title} | ${videoUrl}`);
     console.log(`Nuevo video detectado: ${title}`);
   }
 });
