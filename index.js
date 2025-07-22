@@ -197,3 +197,4 @@ discordClient.on('messageCreate', async message => {
 // --- Iniciar bots ---
 client.connect().catch(err => console.error('Error al conectar a Twitch:', err));
 discordClient.login(process.env.DISCORD_BOT_TOKEN).catch(err => console.error('Error al conectar a Discord:', err));
+
