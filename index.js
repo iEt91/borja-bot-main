@@ -117,8 +117,8 @@ client.on('message', async (channel, tags, message, self) => {
 
   // --- !clip ---
   if (message.toLowerCase() === '!clip') {
-    if (!isMod && !isBroadcaster && !['goaleex', 'suiiigfx'].includes(username.toLowerCase())) {
-      client.say(channel, 'Solo moderadores, goaleex o suiiigfx pueden usar este comando');
+    if (!isMod && !isBroadcaster && !['goaleex', 'suiiigfx', 'paula2415'].includes(username.toLowerCase())) {
+      client.say(channel, 'No tienes permisos para crear clips.');
       return;
     }
     const now = Date.now();
